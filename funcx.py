@@ -13,6 +13,21 @@ from scipy.stats import linregress
 
 #Need some better commenting here. How about updating metadata as well?
 
+def cut_sst():
+    physics_month= xr.open_zarr('/OSM/CBR/OA_DCFP/data/model_output/CAFE/data_assimilation/d60-zarr/ocean_month.zarr',consolidated=True)
+    physics_month['xt_ocean']=physics_month['xt_ocean']+360
+    sst=physics_month.sst.sel(xt_ocean=slice(120,290),yt_ocean=slice(-20,20))
+    sst['time']=np.array(sst.indexes['time'].to_datetimeindex(), dtype='datetime64[M]')
+    sst=sst.sel(time=slice(np.datetime64('1982-01-01'),np.datetime64('2020-01-01')))
+    sst=sst.rename({'xt_ocean':'lon','yt_ocean':'lat'})
+    sst.to_netcdf('/scratch1/pit071/CAFE60/sst.nc')
+    
+    #Save SOI index.
+    nino34=sst.sel(lat=slice(-5,5),lon=slice(190,240))
+    soi=(nino34.mean(dim=['time','lat','lon']))-nino34.mean(dim=['lat','lon'])
+    soi.sst.to_netcdf('/scratch1/pit071/CAFE60/soi.nc')
+    #return sst
+   
 
 def cut_aco2():
     BGC_monthly = xr.open_zarr('/OSM/CBR/OA_DCFP/data/model_output/CAFE/data_assimilation/d60-zarr/ocean_bgc_month.zarr/',consolidated=True)
