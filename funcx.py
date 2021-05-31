@@ -110,3 +110,7 @@ def cut_regrid_sst():
     regridder = xe.Regridder(sst_obs, sst_cafe, 'bilinear',reuse_weights=True)
     sst_obs_regrid=regridder(sst_obs)
     sst_obs_regrid.to_netcdf('/scratch1/pit071/CAFE60/sst.mnmean.regrid.nc')
+    
+    
+if __name__ == '__main__':
+    pass
