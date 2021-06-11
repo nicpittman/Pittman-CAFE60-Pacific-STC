@@ -176,6 +176,7 @@ def CAFE60_eqpac_cutter(modelType='BGC',
                         regridder=False,
                         plot=True,
                         force=False,
+                        st_ocean=None,
                         savepath='/scratch1/pit071/CAFE60/processed/'):
     
     '''
@@ -235,9 +236,14 @@ def CAFE60_eqpac_cutter(modelType='BGC',
             # --------------------------
             #Start modifying model data
             print('Begin Dataset Size: '+str(modeldata.nbytes/1e9) + ' GB')
-
-            modeldata=modeldata.rename({'xt_ocean':'lon','yt_ocean':'lat'})
-
+        
+            try:
+                modeldata=modeldata.rename({'xt_ocean':'lon','yt_ocean':'lat'})
+                print('renamed lons')
+            except:
+                #lats will be wrong way around
+                print('vars probably already named')
+      
             if fix_long_coords==True:
                 modeldata['lon']=modeldata['lon']+360
 
@@ -246,37 +252,59 @@ def CAFE60_eqpac_cutter(modelType='BGC',
                 region_name='eqpac/'
             else:
                 region_name='global/'
-
+  
             if convert_times==True:
                 modeldata['time']=np.array(modeldata.indexes['time'].to_datetimeindex(), dtype='datetime64[M]')
                 modeldata=modeldata.sel(time=slice(np.datetime64(str(startday)+'-01-01'),np.datetime64('2020-01-01')))
             else:
                 print("Cut times for CF Not Implements. Try convert_times=True")
 
-          
             if save_all_data==True:
                 #Save the whole dataset here
                 spath=savepath+region_name+str(var)+'_all_'+str(startday)+'.nc'
                 if check_existing_file(spath,force)==False: #if it returns true then it exists and can open
                     print('Saving Dataset '+var+', size: '+str(modeldata.nbytes/1e9) + ' GB')
                     modeldata.to_netcdf(spath) 
+                    print('saved to: '+spath)
                 else:
-                    print('Mean whole '+var+' Dataset already exists')
-
+                    print('Mean whole '+var+' Dataset already exists at: '+spath)
+            
+            if type(st_ocean)==list:
+                print('Cut function currently does not support multiple depths')
+                pass
+                #sum or mean of the water column?
+                #modeldata.sel(st_ocean=st_ocean).mean(dim='st_ocean')
+                #modeldata.sel(st_ocean=st_ocean).sum(dim='st_ocean')
+                
+            elif type(st_ocean)==int:
+                try:
+                    modeldata=modeldata.sel(st_ocean=st_ocean)
+                except:
+                    print('Failed no st_ocean variable available try again, doing nothing.')
+                
+                
                 
                 
             if mean_of_ensemble==True:
                 #SAVING ENS MEAN
                 spath=savepath+region_name+str(var)+'_ensmean_'+str(startday)+'.nc'
-
+                spath_std=savepath+region_name+str(var)+'_ensstd_'+str(startday)+'.nc'
+                
                 if check_existing_file(spath,force)==False: #if it returns true then it exists and can open
                     if var=='stf10':
                          modeldata_mean=modeldata.sel(ensemble=1)
                     else:
                         modeldata_mean=modeldata.mean(dim='ensemble')
+                        modeldata_std=modeldata.std(dim='ensemble')
+                        
                     print('Saving Mean Ens Dataset Size: '+str(modeldata_mean.nbytes/1e9) + ' GB')
-
                     modeldata_mean.to_netcdf(spath) 
+                    print('Saved to: '+spath)
+                          
+                    if check_existing_file(spath_std,force)==False:
+                        modeldata_mean.to_netcdf(spath_std) 
+                        print('Saved to: '+spath_std)
+                    
                 else:
                     print('Mean Ens Dataset already exists: '+spath)
 
@@ -284,7 +312,6 @@ def CAFE60_eqpac_cutter(modelType='BGC',
             if trend==True:
                  #REQUIRES mean of ensemble=True
                 modeldata_mean=xr.open_dataset(savepath+region_name+str(var)+'_ensmean_'+str(startday)+'.nc')[var]
-
 
                 spath82=savepath+region_name+str(var)+'_meantrends_'+str(1982)+'.nc'
                 spath20=savepath+region_name+str(var)+'_meantrends_'+str(2000)+'.nc'
@@ -318,34 +345,47 @@ def CAFE60_eqpac_cutter(modelType='BGC',
                 spath=savepath+region_name+str(var)+'_enstrends_'+str(startday)+'.nc'
                 remove_existing_file(spath)
                 trends.to_netcdf(spath)
+                print('Saved to: '+spath)
 
    
     
     
-def proc_landschutzer(cuttropics=False,force=False):
+def proc_landschutzer(new=True,cuttropics=False,force=False):
     #Load and process landschutzer data
-    landschutzer_CO2=xr.open_dataset('/scratch1/pit071/carbon_data_ch2/spco2_MPI-SOM_FFN_v2020.nc')
+    if new==True:
+        landschutzer_CO2=xr.open_dataset('/scratch1/pit071/carbon_data_ch2/spco2_MPI-SOM_FFN_v2020.nc').fgco2_smoothed
+        landschutzer_CO2['time']=landschutzer_CO2['time'].astype('datetime64[M]')
+        prefix=''
+        
+    elif new==False:
+        landschutzer_CO2=xr.open_dataset('/OSM/CBR/OA_DCFP/work/mat236/obs/spco2_clim_1985-2015_MPI_SOM-FFN_v2016.nc')   
+        prefix='matear_clim'
+        
     landschutzer_CO2= landschutzer_CO2.assign_coords(lon=(landschutzer_CO2.lon % 360)).roll(lon=(landschutzer_CO2.dims['lon']),roll_coords=False).sortby('lon')		#EPIC 1 line fix for the dateline problem.
     #landschutzer_CO2=landschutzer_CO2.sel(lon=slice(120,290),lat=slice(-20,20)).fgco2_smoothed/365 #From per to per day
-    landschutzer_CO2=landschutzer_CO2.fgco2_smoothed*12 #to grams
-    landschutzer_CO2['time']=landschutzer_CO2['time'].astype('datetime64[M]')
+    landschutzer_CO2=landschutzer_CO2*12 #to grams
+    #print(landschutzer_CO2)
 
-    
-    #Regrid
-    cafe=xr.open_dataset('/scratch1/pit071/CAFE60/processed/global/stf10_ensmean_1982.nc')
-    regridder = xe.Regridder(landschutzer_CO2, cafe, 'bilinear',reuse_weights=True)
-    landschutzer_CO2=regridder(landschutzer_CO2)
+    #Regrid only the new version not the climatology 
+    if new==True:
+        cafe=xr.open_dataset('/scratch1/pit071/CAFE60/processed/global/stf10_ensmean_1982.nc')
+        regridder = xe.Regridder(landschutzer_CO2, cafe, 'bilinear',reuse_weights=True)
+        landschutzer_CO2=regridder(landschutzer_CO2)
     
     savepath='global'
     if cuttropics==True:
         landschutzer_CO2=landschutzer_CO2.sel(lat=slice(-20,20),lon=slice(120,290))
         savepath='eqpac'
     
-    fp='/scratch1/pit071/CAFE60/processed/obs/landshutzer_'+savepath+'_regrid.nc'
+    fp='/scratch1/pit071/CAFE60/processed/obs/landshutzer'+prefix+'_'+savepath+'_regrid.nc'
     if check_existing_file(fp,force)==False:
         landschutzer_CO2.to_netcdf(fp)
     else:
         print('Not resaving Landshutzer: '+savepath)
+
+        
+        
+        
         
 def cut_regrid_reynolds_sst(cuttropics=False,force=False):
     sst_cafe=xr.open_dataset('/scratch1/pit071/CAFE60/processed/global/sst_ensmean_1982.nc').sst
