@@ -3,7 +3,7 @@ import xarray as xr
 import numpy as np
 from dask.distributed import Client
 import matplotlib as mpl
-from carbon_math import carbon_flux
+from a_carbon_math import carbon_flux
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -160,7 +160,8 @@ def single_line_plotter(lmean,ltrend82,ltrend20,titles,ltrendmm=None,ltrendm=Non
 
 #THIS IS THE MAIN FUNCTION.. Still could have modifications to improve it. 
 
-def CAFE60_eqpac_cutter(modelType='BGC',
+def CAFE60_eqpac_cutter(#modeldata_all,
+                        modelType='BGC',
                         variable=None,
                         cut_eqpac=True,
                         save_all_data=False,
@@ -177,7 +178,7 @@ def CAFE60_eqpac_cutter(modelType='BGC',
                         plot=True,
                         force=False,
                         st_ocean=None,
-                        savepath='/scratch1/pit071/CAFE60/processed/'):
+                        savepath='/g/data/xv83/np1383/CAFE_data/processed/'):
     
     '''
     A large customisable function to slice the data we want out of the CAFE60 storage.
@@ -206,11 +207,11 @@ def CAFE60_eqpac_cutter(modelType='BGC',
     '''
     #Load the desired data in
     if modelType=='BGC':
-        modeldata_all=xr.open_zarr('/OSM/CBR/OA_DCFP/data/model_output/CAFE/data_assimilation/d60-zarr/ocean_bgc_month.zarr',consolidated=True)
+        modeldata_all=xr.open_zarr('/g/data/xv83/dcfp/CAFE60v1/ocean_bgc_month.zarr.zip',consolidated=True)
     elif modelType=='physics':
-        modeldata_all=xr.open_zarr('/OSM/CBR/OA_DCFP/data/model_output/CAFE/data_assimilation/d60-zarr/ocean_month.zarr',consolidated=True)
+        modeldata_all=xr.open_zarr('/g/data/xv83/dcfp/CAFE60v1/ocean_month.zarr.zip',consolidated=True)
     elif modelType=='atmos':
-        modeldata_all=xr.open_zarr('/OSM/CBR/OA_DCFP/data/model_output/CAFE/data_assimilation/d60-zarr/atmos_isobaric_month.zarr',consolidated=True)
+        modeldata_all=xr.open_zarr('/g/data/xv83/dcfp/CAFE60v1/atmos_isobaric_month.zarr.zip',consolidated=True)
     
     #Grab the variable[s] we want.
     if type(variable)==type(None):
