@@ -13,7 +13,6 @@ from scipy.stats import linregress
 import os
 
 
-
 def calc_longterm_trends(ds,startday=np.datetime64('1982-01-01'),endday=np.datetime64('2020-01-01')):
     hovmol=ds
     hovmol=hovmol.where(hovmol!=-0.9999,np.nan)
@@ -178,8 +177,9 @@ def CAFE60_eqpac_cutter(#modeldata_all,
                         plot=True,
                         force=False,
                         st_ocean=None,
-                        savepath='/g/data/xv83/np1383/CAFE_data/processed/'):
-    
+                        raw_cafe_fp='/g/data/xv83/dcfp/CAFE60v1/',
+                        processed_path='/g/data/xv83/np1383/processed_data/'):
+
     '''
     A large customisable function to slice the data we want out of the CAFE60 storage.
     Focuses on Monthly data. Could be expanded to process daily but not yet.
@@ -207,11 +207,11 @@ def CAFE60_eqpac_cutter(#modeldata_all,
     '''
     #Load the desired data in
     if modelType=='BGC':
-        modeldata_all=xr.open_zarr('/g/data/xv83/dcfp/CAFE60v1/ocean_bgc_month.zarr.zip',consolidated=True)
+        modeldata_all=xr.open_zarr(raw_cafe_fp+'ocean_bgc_month.zarr.zip',consolidated=True)
     elif modelType=='physics':
-        modeldata_all=xr.open_zarr('/g/data/xv83/dcfp/CAFE60v1/ocean_month.zarr.zip',consolidated=True)
+        modeldata_all=xr.open_zarr(raw_cafe_fp+'ocean_month.zarr.zip',consolidated=True)
     elif modelType=='atmos':
-        modeldata_all=xr.open_zarr('/g/data/xv83/dcfp/CAFE60v1/atmos_isobaric_month.zarr.zip',consolidated=True)
+        modeldata_all=xr.open_zarr(raw_cafe_fp+'atmos_isobaric_month.zarr.zip',consolidated=True)
     
     #Grab the variable[s] we want.
     if type(variable)==type(None):
@@ -270,6 +270,7 @@ def CAFE60_eqpac_cutter(#modeldata_all,
                 else:
                     print('Mean whole '+var+' Dataset already exists at: '+spath)
             
+            st_ocean_marker=''
             if type(st_ocean)==list:
                 print('Cut function currently does not support multiple depths')
                 pass
@@ -280,6 +281,7 @@ def CAFE60_eqpac_cutter(#modeldata_all,
             elif type(st_ocean)==int:
                 try:
                     modeldata=modeldata.sel(st_ocean=st_ocean)
+                    st_ocean_marker='_'+str(st_ocean)+'m_'
                 except:
                     print('Failed no st_ocean variable available try again, doing nothing.')
                 
@@ -288,8 +290,9 @@ def CAFE60_eqpac_cutter(#modeldata_all,
                 
             if mean_of_ensemble==True:
                 #SAVING ENS MEAN
-                spath=savepath+region_name+str(var)+'_ensmean_'+str(startday)+'.nc'
-                spath_std=savepath+region_name+str(var)+'_ensstd_'+str(startday)+'.nc'
+                print('Calculating Ens Mean')
+                spath=processed_path+'cafe/'+region_name+str(var)+'_ensmean_'+str(startday)+st_ocean_marker+'.nc'
+                spath_std=processed_path+'cafe/'+region_name+str(var)+'_ensstd_'+str(startday)+st_ocean_marker+'.nc'
                 
                 if check_existing_file(spath,force)==False: #if it returns true then it exists and can open
                     if var=='stf10':
@@ -311,11 +314,12 @@ def CAFE60_eqpac_cutter(#modeldata_all,
 
 
             if trend==True:
-                 #REQUIRES mean of ensemble=True
-                modeldata_mean=xr.open_dataset(savepath+region_name+str(var)+'_ensmean_'+str(startday)+'.nc')[var]
+                print('Calculating Trend')
+                 #REQUIRES mean_of_ensemble=True
+                modeldata_mean=xr.open_dataset(processed_path+'cafe/'+region_name+str(var)+'_ensmean_'+str(startday)+st_ocean_marker+'.nc')[var]
 
-                spath82=savepath+region_name+str(var)+'_meantrends_'+str(1982)+'.nc'
-                spath20=savepath+region_name+str(var)+'_meantrends_'+str(2000)+'.nc'
+                spath82=processed_path+'cafe/'+region_name+str(var)+'_meantrends_'+str(1982)+st_ocean_marker+'.nc'
+                spath20=processed_path+'cafe/'+region_name+str(var)+'_meantrends_'+str(2000)+st_ocean_marker+'.nc'
 
                 if check_existing_file(spath82,force)==False:
                     trend_1982=calc_longterm_trends(modeldata_mean,startday='1982-01-01')
@@ -330,6 +334,7 @@ def CAFE60_eqpac_cutter(#modeldata_all,
                     print('2000 trend Dataset already exists: '+spath20)
 
                 if plot==True:
+                    print('plotting')
                     lmean=xr.open_dataset(spath)[var]
                     ltrend82=xr.open_dataset(spath82).trend
                     ltrend20=xr.open_dataset(spath20).trend
@@ -343,44 +348,38 @@ def CAFE60_eqpac_cutter(#modeldata_all,
                 if len(startday)==4:
                     startday=str(startday)+'-01-01'
                 trends=make_sst_trends_netcdf(modeldata,startday)
-                spath=savepath+region_name+str(var)+'_enstrends_'+str(startday)+'.nc'
+                spath=savepath+region_name+str(var)+'_enstrends_'+str(startday)+st_ocean_marker+'.nc'
                 remove_existing_file(spath)
                 trends.to_netcdf(spath)
                 print('Saved to: '+spath)
 
-   
     
-    
-def proc_landschutzer(new=True,cuttropics=False,force=False):
+def proc_landschutzer(cuttropics=False,force=False,
+                      obs_fp='/g/data/xv83/np1383/external_data/',
+                      processed_path='/g/data/xv83/np1383/processed_data/'):
     #Load and process landschutzer data
-    if new==True:
-        landschutzer_CO2=xr.open_dataset('/scratch1/pit071/carbon_data_ch2/spco2_MPI-SOM_FFN_v2020.nc').fgco2_smoothed
-        landschutzer_CO2['time']=landschutzer_CO2['time'].astype('datetime64[M]')
-        prefix=''
+    landschutzer_CO2=xr.open_dataset(str(obs_fp)+'co2/landschutzer_co2/spco2_MPI-SOM_FFN_v2020.nc').fgco2_smoothed
+    landschutzer_CO2['time']=landschutzer_CO2['time'].astype('datetime64[M]')        
         
-    elif new==False:
-        landschutzer_CO2=xr.open_dataset('/OSM/CBR/OA_DCFP/work/mat236/obs/spco2_clim_1985-2015_MPI_SOM-FFN_v2016.nc')   
-        prefix='matear_clim'
-        
-    landschutzer_CO2= landschutzer_CO2.assign_coords(lon=(landschutzer_CO2.lon % 360)).roll(lon=(landschutzer_CO2.dims['lon']),roll_coords=False).sortby('lon')		#EPIC 1 line fix for the dateline problem.
+    landschutzer_CO2= landschutzer_CO2.assign_coords(lon=(landschutzer_CO2.lon % 360)).roll(lon=(landschutzer_CO2.sizes['lon']),roll_coords=False).sortby('lon')		#EPIC 1 line fix for the dateline problem. #Did dims get broken and moved to sizes?
     #landschutzer_CO2=landschutzer_CO2.sel(lon=slice(120,290),lat=slice(-20,20)).fgco2_smoothed/365 #From per to per day
     landschutzer_CO2=landschutzer_CO2*12 #to grams
     #print(landschutzer_CO2)
 
     #Regrid only the new version not the climatology 
-    if new==True:
-        cafe=xr.open_dataset('/scratch1/pit071/CAFE60/processed/global/stf10_ensmean_1982.nc')
-        regridder = xe.Regridder(landschutzer_CO2, cafe, 'bilinear',reuse_weights=True)
-        landschutzer_CO2=regridder(landschutzer_CO2)
+
+    cafe=xr.open_dataset(processed_path+'cafe/global/stf10_ensmean_1982.nc')
+    regridder = xe.Regridder(landschutzer_CO2, cafe, 'bilinear',reuse_weights=False)
+    landschutzer_CO2=regridder(landschutzer_CO2)
     
     savepath='global'
     if cuttropics==True:
         landschutzer_CO2=landschutzer_CO2.sel(lat=slice(-20,20),lon=slice(120,290))
         savepath='eqpac'
-    
-    fp='/scratch1/pit071/CAFE60/processed/obs/landshutzer'+prefix+'_'+savepath+'_regrid.nc'
-    if check_existing_file(fp,force)==False:
-        landschutzer_CO2.to_netcdf(fp)
+        
+    filepath=processed_path+'cafe/landshutzer'+'_'+savepath+'_regrid.nc'
+    if check_existing_file(filepath,force)==False:
+        landschutzer_CO2.to_netcdf(filepath)
     else:
         print('Not resaving Landshutzer: '+savepath)
 
@@ -388,16 +387,26 @@ def proc_landschutzer(new=True,cuttropics=False,force=False):
         
         
         
-def cut_regrid_reynolds_sst(cuttropics=False,force=False):
-    sst_cafe=xr.open_dataset('/scratch1/pit071/CAFE60/processed/global/sst_ensmean_1982.nc').sst
-    sst_obs=xr.open_dataset('/scratch1/pit071/carbon_data_ch2/sst.mnmean.nc')
+def cut_regrid_reynolds_sst(cuttropics=False,
+                            force=False,
+                            
+                            ext_fp='/g/data/xv83/np1383/external_data/',
+                            processed_fp='/g/data/xv83/np1383/processed_data/',
+                            seamask_flag=False):
+    
+    sst_cafe=xr.open_dataset(processed_fp+'cafe/global/sst_ensmean_1982.nc').sst
+    sst_obs=xr.open_dataset(ext_fp+'sst/sst.mnmean.nc')
     
     #Apply seamask
-    seamask=xr.open_dataset('/scratch1/pit071/carbon_data_ch2/seamask.nc')
-    seamask= seamask.assign_coords(lon=(seamask.lon % 360)).roll(lon=(seamask.dims['lon'] // 2),roll_coords=True)
-    seamask=seamask.reindex(lat=seamask.lat[::-1])
-    
-    sst_obs_new=sst_obs.sst.where(seamask.seamask==1,np.nan)
+    if seamask_flag==True:
+        raise NotImplementedError('To do.. Really necessary?')
+        seamask=xr.open_dataset(ext_fp+'seamask.nc') #Probably doesnt exist.
+        seamask= seamask.assign_coords(lon=(seamask.lon % 360)).roll(lon=(seamask.size['lon'] // 2),roll_coords=True)
+        seamask=seamask.reindex(lat=seamask.lat[::-1])
+        sst_obs_new=sst_obs.sst.where(seamask.seamask==1,np.nan)
+    else:
+        sst_obs_new=sst_obs
+        
     savepath='global'
     if cuttropics==True:
         sst_obs_new=sst_obs_new.sel(lat=slice(20,-20),lon=slice(120,290))
@@ -405,56 +414,62 @@ def cut_regrid_reynolds_sst(cuttropics=False,force=False):
         
     sst_obs_new=sst_obs_new.sel(time=slice('1982-01-01','2019-12-01'))
     sst_obs_new=sst_obs_new.reindex(lat=sst_obs.lat[::-1])
-    regridder = xe.Regridder(sst_obs_new, sst_cafe, 'bilinear',reuse_weights=True)
+    regridder = xe.Regridder(sst_obs_new, sst_cafe, 'bilinear',reuse_weights=False)
     sst_obs_regrid=regridder(sst_obs_new)
 
     #Could add global if statement here.
     #sst_obs_regrid.to_netcdf('/scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.nc')
-    if check_existing_file('/scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.'+savepath+'.nc',force)==False:
-        print('saving: /scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.'+savepath+'.nc')
-        sst_obs_regrid.to_netcdf('/scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.'+savepath+'.nc')
+    filepath=processed_fp+'obs/sst.mnmean.regrid.'+savepath+'.nc'
+    if check_existing_file(filepath,force)==False:
+        print('saving: '+filepath)
+        sst_obs_regrid.to_netcdf(filepath)
     else:
         print('Not resaving Reynolds SST'+savepath)
 
         
-def cut_process_sst_obs_trends(force=False):
+def cut_process_sst_obs_trends(force=False,
+                               processed_fp='/g/data/xv83/np1383/processed_data/'):
     paths=['global','eqpac']
     for path in paths:
-        fp='/scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.'+path+'.nc'
+        filepath=processed_fp+'obs/sst.mnmean.regrid.'+path+'.nc'
         
-        if check_existing_file(fp)==True:
-            sst_obs=xr.open_dataset(fp)
+        if check_existing_file(filepath)==True:
+            sst_obs=xr.open_dataset(filepath)
 
             sst_obs_tr_1982=calc_longterm_trends(sst_obs.sst,'1982')
             sst_obs_tr_2000=calc_longterm_trends(sst_obs.sst,'2000')
 
-            fp82='/scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.'+str(path)+'.trend.1982.nc'
+            fp82=processed_fp+'obs/sst.mnmean.regrid.'+str(path)+'.trend.1982.nc'
             if check_existing_file(fp82,force)==False:   
                 print('saving 82 sst trends')
                 sst_obs_tr_1982.to_netcdf(fp82)
-            fp20='/scratch1/pit071/CAFE60/processed/obs/sst.mnmean.regrid.'+str(path)+'.trend.2000.nc'
+            fp20=processed_fp+'obs/sst.mnmean.regrid.'+str(path)+'.trend.2000.nc'
             if check_existing_file(fp20,force)==False:
                 print('saving 2000 sst trends')
                 sst_obs_tr_2000.to_netcdf(fp20)
 
     
-def process_co2_land_trends(force=False):
+def process_co2_land_trends(force=False,
+                            processed_fp='/g/data/xv83/np1383/processed_data/'):
+    
     paths=['global','eqpac']
     for path in paths:
-        fp='/scratch1/pit071/CAFE60/processed/obs/landshutzer_'+path+'_regrid.nc'
+        filepath=processed_fp+'/obs/landshutzer_'+path+'_regrid.nc'
          
-        if check_existing_file(fp)==True:
+        if check_existing_file(filepath)==True:
 
             land_obs=xr.open_dataset(fp)
             land_obs_tr_1982=calc_longterm_trends(land_obs.fgco2_smoothed/365,'1982')
             land_obs_tr_2000=calc_longterm_trends(land_obs.fgco2_smoothed/365,'2000')
             
-            if check_existing_file('/scratch1/pit071/CAFE60/processed/obs/landshutzer_'+path+'_regrid_trend_1982.nc',force)==False:
-                land_obs_tr_1982.to_netcdf('/scratch1/pit071/CAFE60/processed/obs/landshutzer_'+path+'_regrid_trend_1982.nc')
+            if check_existing_file(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_1982.nc',force)==False:
+                print('Saving 1982 CO2 flux trends')
+                land_obs_tr_1982.to_netcdf(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_1982.nc')
                 
             
-            if check_existing_file('/scratch1/pit071/CAFE60/processed/obs/landshutzer_'+path+'_regrid_trend_2000.nc',force)==False:
-                land_obs_tr_2000.to_netcdf('/scratch1/pit071/CAFE60/processed/obs/landshutzer_'+path+'_regrid_trend_2000.nc')
+            if check_existing_file(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_2000.nc',force)==False:
+                print('Saving 2000 CO2 flux trends')
+                land_obs_tr_2000.to_netcdf(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_2000.nc')
 
 
                 
@@ -534,8 +549,6 @@ def lin_wrapper(obj,startyear=1982):
                            output_dtypes=['float64'],
                            output_sizes={"stats": 2})
     return stat
-
-
 
 if __name__ == '__main__':
     pass
