@@ -12,7 +12,7 @@ import xesmf as xe
 from scipy.stats import linregress
 import os
 
-from C60_helper_functions import check_existing_file
+from C60_helper_functions import check_existing_file, single_line_plotter
 
 def calc_longterm_trends(ds,startday=np.datetime64('1982-01-01'),endday=np.datetime64('2020-01-01')):
     hovmol=ds
@@ -179,16 +179,7 @@ def CAFE60_eqpac_cutter(#modeldata_all,
             else:
                 print("Cut times for CF Not Implements. Try convert_times=True")
 
-            if save_all_data==True:
-                #Save the whole dataset here
-                spath=savepath+region_name+str(var)+'_all_'+str(startday)+'.nc'
-                if check_existing_file(spath,force)==False: #if it returns true then it exists and can open
-                    print('Saving Dataset '+var+', size: '+str(modeldata.nbytes/1e9) + ' GB')
-                    modeldata.to_netcdf(spath) 
-                    print('saved to: '+spath)
-                else:
-                    print('Mean whole '+var+' Dataset already exists at: '+spath)
-            
+
             st_ocean_marker=''
             if type(st_ocean)==list:
                 print('Cut function currently does not support multiple depths')
@@ -204,7 +195,16 @@ def CAFE60_eqpac_cutter(#modeldata_all,
                 except:
                     print('Failed no st_ocean variable available try again, doing nothing.')
                 
-                
+            if save_all_data==True:
+                #Save the whole dataset here
+                spath=processed_path+'cafe/'+region_name+str(var)+'_ensmean_'+str(startday)+st_ocean_marker+'_all_ensembles.nc'
+                if check_existing_file(spath,force)==False: #if it returns true then it exists and can open
+                    print('Saving Dataset '+var+', size: '+str(modeldata.nbytes/1e9) + ' GB')
+                    modeldata.to_netcdf(spath) 
+                    print('saved to: '+spath)
+                else:
+                    print('Mean whole '+var+' Dataset already exists at: '+spath)
+            
                 
                 
             if mean_of_ensemble==True:
