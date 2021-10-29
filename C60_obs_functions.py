@@ -23,7 +23,7 @@ def proc_landschutzer(cuttropics=False,force=False,
         
     landschutzer_CO2= landschutzer_CO2.assign_coords(lon=(landschutzer_CO2.lon % 360)).roll(lon=(landschutzer_CO2.sizes['lon']),roll_coords=False).sortby('lon')		#EPIC 1 line fix for the dateline problem. #Did dims get broken and moved to sizes?
     #landschutzer_CO2=landschutzer_CO2.sel(lon=slice(120,290),lat=slice(-20,20)).fgco2_smoothed/365 #From per to per day
-    landschutzer_CO2=landschutzer_CO2*12 #to grams
+    landschutzer_CO2=(landschutzer_CO2*12)/365 #to grams
     #print(landschutzer_CO2)
 
     #Regrid only the new version not the climatology 
@@ -43,6 +43,28 @@ def proc_landschutzer(cuttropics=False,force=False,
     else:
         print('Not resaving Landshutzer: '+savepath)
 
+
+def process_co2_land_trends(force=False,
+                            processed_fp='/g/data/xv83/np1383/processed_data/'):
+    
+    paths=['global','eqpac']
+    for path in paths:
+        filepath=processed_fp+'/obs/landshutzer_'+path+'_regrid.nc'
+         
+        if check_existing_file(filepath)==True:
+
+            land_obs=xr.open_dataset(filepath)
+            land_obs_tr_1982=calc_longterm_trends(land_obs.fgco2_smoothed,'1982')
+            land_obs_tr_2000=calc_longterm_trends(land_obs.fgco2_smoothed,'2000')
+            
+            if check_existing_file(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_1982.nc',force)==False:
+                print('Saving 1982 CO2 flux trends')
+                land_obs_tr_1982.to_netcdf(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_1982.nc')
+                
+            
+            if check_existing_file(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_2000.nc',force)==False:
+                print('Saving 2000 CO2 flux trends')
+                land_obs_tr_2000.to_netcdf(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_2000.nc')
         
         
         
@@ -109,28 +131,123 @@ def cut_process_sst_obs_trends(force=False,
                 sst_obs_tr_2000.to_netcdf(fp20)
 
     
-def process_co2_land_trends(force=False,
+def make_earth_grid_m2(processed_path='/g/data/xv83/np1383/processed_data/'):
+    boxlo,boxla=np.array(np.meshgrid(np.arange(-179.5,179.5,1),np.arange(-89.5,89.5,1)))
+    actual_grid=np.cos(np.radians(abs(boxla)))*(111.1*111.1*1000*1000)
+    grid_nc=xr.DataArray(actual_grid,coords={'lat':boxla[:,1],'lon':boxlo[1,:]},dims=['lat','lon'])
+    lat_size=110567 #in m
+    grid_nc['m2']=grid_nc#*lat_size
+    grid_nc=grid_nc['m2']
+    grid_nc.to_netcdf(processed_path+'earth_m2.nc',engine='h5netcdf',mode='w')
+    return True
+
+
+def earth_grid_m2_rodenbeck(rodenbeck_path,processed_path='/g/data/xv83/np1383/processed_data/'):
+    # Uses regridded CO2
+    # If using ,='../../rxm599/obs/oc_v2021_daily.nc' need to change the 1 below to 2.5 and 2. 
+#178.8 -176.2 ... 176.2 178.8
+# (-178.75,178.75+2.5,2.5)
+    boxlo,boxla=np.array(np.meshgrid(np.arange(0,360,1),np.arange(-89,89+1,1)))
+    
+    actual_grid=np.cos(np.radians(abs(boxla)))*(111.1*111.1*1000*1000)
+    grid_nc=xr.DataArray(actual_grid,coords={'lat':boxla[:,1],'lon':boxlo[1,:]},dims=['lat','lon'])
+    lat_size=110567 #in m
+    grid_nc['m2']=grid_nc#*lat_size
+    grid_nc=grid_nc['m2']
+    
+    rodenbeck=xr.open_dataset(rodenbeck_path)
+    regridder = xe.Regridder(grid_nc, rodenbeck, 'bilinear',reuse_weights=False)
+    grid_nc_regrid=regridder(grid_nc)
+    
+    if check_existing_file(processed_path+'earth_m2_regrid_rodenbeck.nc',force=True)==False:
+        grid_nc_regrid.to_netcdf(processed_path+'earth_m2_regrid_rodenbeck.nc',engine='h5netcdf')
+    return True
+
+
+    
+def proc_rodenbeck(cuttropics=False,force=False,verbose=True,
+                      obs_fp='../../rxm599/obs/',
+                      processed_path='/g/data/xv83/np1383/processed_data/'):
+    #Load and process landschutzer data
+    rodenbeck_CO2=xr.open_dataset(obs_fp+'oc_v2021_daily.nc',chunks={'time':1}).co2flux_ocean
+    
+    #Rename time and convert to monthly and first day of month
+    rodenbeck_CO2=rodenbeck_CO2.rename({'mtime':'time'})
+    
+    rodenbeck_CO2=rodenbeck_CO2.resample(time='M').mean()
+    rodenbeck_CO2['time']=rodenbeck_CO2['time'].astype('datetime64[M]')  
+    rodenbeck_CO2= rodenbeck_CO2.assign_coords(lon=(rodenbeck_CO2.lon % 360)).roll(lon=(rodenbeck_CO2.sizes['lon']),roll_coords=False).sortby('lon')		#EPIC 1 line fix for the dateline problem.
+
+    rodenbeck_CO2_units=(rodenbeck_CO2*(10**15))/365 #Convert from PgC/Yr/Grid to gC/day/Grid
+    #Regrid only the new version not the climatology 
+    rodenbeck_CO2_units=rodenbeck_CO2_units #from g CO2 to C.W
+    
+    #if verbose: print(rodenbeck_CO2)
+   
+    # Xarray craziness means we cant do all of these calculations at once. Calculate intermediate step (Delete file after?)
+    intermediate_path=processed_path+'obs/rodenbeck_intermediate_regrid.nc'
+    if check_existing_file(intermediate_path,False)==False:
+        rodenbeck_CO2_units.to_netcdf(intermediate_path)
+    rodenbeck_CO2.close()
+    rodenbeck_CO2_units.close()
+    
+    if verbose: print('Saved and reloaded intermediate step, now regridding')
+    
+    rodenbeck_CO2_intermediate=xr.open_dataset(intermediate_path)
+    if verbose: print('Normalising to m2')
+    earth_grid_m2_rodenbeck(rodenbeck_path=intermediate_path)
+    grid_nc=xr.open_dataset(processed_path+'earth_m2_regrid_rodenbeck.nc',engine='h5netcdf')
+    rodenbeck_CO2_intermediate_m2=(rodenbeck_CO2_intermediate/(grid_nc.m2*5))#.m2.plot()  *5 is for the 2.5 to 2 ratio. Regrid weirdness easiest fix?
+    
+    
+    cafe=xr.open_dataset(processed_path+'cafe/global/stf10_ensmean_1982.nc')
+    regridder = xe.Regridder(rodenbeck_CO2_intermediate_m2, cafe, 'bilinear',reuse_weights=False)
+    rodenbeck_CO2_regrid=regridder(rodenbeck_CO2_intermediate_m2)
+    if verbose: print('Regridded')
+    #rodenbeck_CO2=rodenbeck_CO2.chunk(chunks)
+    
+
+
+    savepath='global'
+    if cuttropics==True:
+        savepath='eqpac'
+        rodenbeck_CO2_regrid=rodenbeck_CO2_regrid.sel(lat=slice(-20,20),lon=slice(120,290))
+
+        
+    filepath=processed_path+'obs/rodenbeck_'+savepath+'_regrid.nc'
+    print(rodenbeck_CO2_regrid.nbytes/1e9)
+    rodenbeck_CO2_regrid.load()
+    print('loaded')
+    print(rodenbeck_CO2_regrid)
+    if check_existing_file(filepath,force)==False:
+        print('saving to: '+filepath)
+        rodenbeck_CO2_regrid.to_netcdf(filepath)
+    else:
+        print('Not resaving Rodenbeck: '+filepath)
+
+
+def process_co2_rodenbeck_trends(force=False,
                             processed_fp='/g/data/xv83/np1383/processed_data/'):
     
     paths=['global','eqpac']
     for path in paths:
-        filepath=processed_fp+'/obs/landshutzer_'+path+'_regrid.nc'
+        filepath=processed_fp+'/obs/rodenbeck_'+path+'_regrid.nc'
          
         if check_existing_file(filepath)==True:
 
-            land_obs=xr.open_dataset(filepath)
-            land_obs_tr_1982=calc_longterm_trends(land_obs.fgco2_smoothed/365,'1982')
-            land_obs_tr_2000=calc_longterm_trends(land_obs.fgco2_smoothed/365,'2000')
+            rodenbeck_obs=xr.open_dataset(filepath).co2flux_ocean
+            rodenbeck_obs_tr_1982=calc_longterm_trends(rodenbeck_obs,'1982')
+            rodenbeck_obs_tr_2000=calc_longterm_trends(rodenbeck_obs,'2000')
             
-            if check_existing_file(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_1982.nc',force)==False:
+            if check_existing_file(processed_fp+'obs/rodenbeck_'+path+'_regrid_trend_1982.nc',force)==False:
                 print('Saving 1982 CO2 flux trends')
-                land_obs_tr_1982.to_netcdf(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_1982.nc')
+                rodenbeck_obs_tr_1982.to_netcdf(processed_fp+'obs/rodenbeck_'+path+'_regrid_trend_1982.nc')
                 
             
-            if check_existing_file(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_2000.nc',force)==False:
+            if check_existing_file(processed_fp+'obs/rodenbeck_'+path+'_regrid_trend_2000.nc',force)==False:
                 print('Saving 2000 CO2 flux trends')
-                land_obs_tr_2000.to_netcdf(processed_fp+'obs/landshutzer_'+path+'_regrid_trend_2000.nc')
-
+                rodenbeck_obs_tr_2000.to_netcdf(processed_fp+'obs/rodenbeck_'+path+'_regrid_trend_2000.nc')
+        
 
                 
 def calc_longterm_trends(ds,startday=np.datetime64('1982-01-01'),endday=np.datetime64('2020-01-01')):
@@ -146,6 +263,7 @@ def calc_longterm_trends(ds,startday=np.datetime64('1982-01-01'),endday=np.datet
     #This will calculate the per pixel trends and pvalues
 
     time=hm.time.values
+    #print(hm)
     xx=np.concatenate(hm.T)
 
     tr=[]
