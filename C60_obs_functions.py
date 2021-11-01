@@ -301,6 +301,57 @@ def calc_longterm_trends(ds,startday=np.datetime64('1982-01-01'),endday=np.datet
     return hh
 
 
+def convert_trim_fratios(trim_path='../external_data/fratios/SIMPLE_TRIM_output.nc',
+                         regrid_path='../processed_data/rey_eqpac_sst_rg.nc'):
+        '''
+        This data is sourced from Tim DeVris, 2017
+        https://tdevries.eri.ucsb.edu/models-and-data-products/
+        DeVries, T., and Weber, T. (2017). The export and fate of organic matter in the ocean: New constraints from combining satellite and oceanographic tracer observations: EXPORT AND FATE OF MARINE ORGANIC MATTER. Global Biogeochem. Cycles 31, 535–555.
+    
+        This function will return the regridded eqpac TRIM ef ratio.
+    
+        '''
+        trim=xr.open_dataset(trim_path)
+        
+        #ratio of sinking particle flux at the base of the euphotic zone to the NPP at each grid point)
+        # This loops through to see the difference between each
+        # Tim said that he just averages the 
+        # for i in range(0,12):
+        #     ver=trim.sel(version=i)
+        #     efratio1=ver.NPP/ver.FPOCex
+        #     efratio2=ver.FPOCex/ver.NPP
+        #     efratio2.T.plot.contourf(levels=np.arange(0,0.425,0.025),cmap='viridis')
+        #     plt.suptitle(str(i))
+        #     plt.show()
+        #     print(i)
+        #     print((((ver.FPOCex/1000)*12)*ver.Area).sum().values/1e15) #Global integrated carbon removal
+        # #trim=trim.set_coords('version')
+        
+        ratio=(trim.FPOCex/trim.NPP).mean(dim='version')
+        ratio.name='avg'
+        std=(trim.FPOCex/trim.NPP).std(dim='version')
+        std.name='stdev'
+        ratio=xr.merge([ratio,std])
+        ourset=trim.mean(dim='version')
+        print((((ourset.FPOCex/1000)*12)*ourset.Area).sum().values/1e15) #Global integrated carbon removal
+        #sel(version=5)
+        ratio['latitude']= trim.LAT.values[0][0]
+        ratio['longitude']= trim.LON.values[0][:,0]
+        
+        ratio=ratio.rename({'latitude':'lat','longitude':'lon'})
+        ratio=ratio.where((ratio>0)&(ratio<100))
+        
+        eqpac_trim=ratio.sel(lat=slice(-21,21),lon=slice(119,301))
+        eqpac_trim['avg']=eqpac_trim.avg.T
+        eqpac_trim['stdev']=eqpac_trim.stdev.T
+        
+        #eqpac_trim.stdev.plot.contourf(levels=np.arange(0,0.425,0.025))
+         
+        to_regridder=xr.open_dataset(regrid_path)
+
+        regridder = xe.Regridder(eqpac_trim, to_regridder, 'bilinear')
+        eqpac_trim_grid=regridder(eqpac_trim)
+        return eqpac_trim_grid
 
 if __name__ == '__main__':
     pass
