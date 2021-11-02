@@ -5,10 +5,10 @@
 # chmod  0600 ~/.netrc
 
 #Download Seawifs file urls to seawifs.txt
-wget -q --post-data="sensor=seawifs&sdate=1997-09-01&edate=2010-12-01&dtype=L3M&addurl=1&results_as_file=1&search=S*DAY_CHL_chlor_a_9km*nc" -O - https://oceandata.sci.gsfc.nasa.gov/api/file_search > seawifs.txt
+wget -q --post-data="sensor=seawifs&sdate=1997-09-01&edate=2010-12-01&dtype=L3M&addurl=1&results_as_file=1&search=S*MO_CHL_chlor_a_9km*nc" -O - https://oceandata.sci.gsfc.nasa.gov/api/file_search > seawifs.txt
 
 #Download MODIS file urls to modis.txt
-wget -q --post-data="sensor=modis_aqua&sdate=2002-01-01&edate=2020-12-01&dtype=L3M&addurl=1&results_as_file=1&search=A*DAY_CHL_chlor_a_9km*nc" -O - https://oceandata.sci.gsfc.nasa.gov/api/file_search > modis.txt
+wget -q --post-data="sensor=modis_aqua&sdate=2002-01-01&edate=2020-12-01&dtype=L3M&addurl=1&results_as_file=1&search=A*MO_CHL_chlor_a_9km*nc" -O - https://oceandata.sci.gsfc.nasa.gov/api/file_search > modis.txt
 
 #Make our dir 
 mkdir chlor_a
