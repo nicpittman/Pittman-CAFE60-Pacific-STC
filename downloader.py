@@ -136,7 +136,7 @@ def unzip_extract_convert(sensor='viirs',ppname='vgpm'):
         
         dat['time']=np.datetime64(dat.attrs['Start Time String'][6:10]+'-'+dat.attrs['Start Time String'][0:2]+'-'+dat.attrs['Start Time String'][3:5])
         dat=dat.assign_coords(lon=(dat.lon % 360)).roll(lon=(dat.dims['lon'] // 2), roll_coords=True)	
-        dat=dat.sel(lat=slice(20,-20))
+        dat=dat.sel(lat=slice(40,-40))
         dat=dat.sel(lon=slice(120,290))
         dat=dat.assign_coords({'time':dat.time})
         #print(final_dat)

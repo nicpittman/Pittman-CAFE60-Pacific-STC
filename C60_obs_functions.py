@@ -23,7 +23,7 @@ def proc_landschutzer(cuttropics=False,force=False,
         
     landschutzer_CO2= landschutzer_CO2.assign_coords(lon=(landschutzer_CO2.lon % 360)).roll(lon=(landschutzer_CO2.sizes['lon']),roll_coords=False).sortby('lon')		#EPIC 1 line fix for the dateline problem. #Did dims get broken and moved to sizes?
     #landschutzer_CO2=landschutzer_CO2.sel(lon=slice(120,290),lat=slice(-20,20)).fgco2_smoothed/365 #From per to per day
-    landschutzer_CO2=(landschutzer_CO2*12)/365 #to grams
+    landschutzer_CO2=(landschutzer_CO2*12)/365 #to grams/day
     #print(landschutzer_CO2)
 
     #Regrid only the new version not the climatology 

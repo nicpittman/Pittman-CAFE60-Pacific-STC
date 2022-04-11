@@ -96,13 +96,14 @@ def single_line_plotter(lmean,ltrend82,ltrend20,titles,ltrendmm=None,ltrendm=Non
     plt.show()
     
     
-def lin_wrapper(obj,startyear=1982):
+def lin_wrapper(obj,startyear=1982,endyear=2020):
     '''
     #https://github.com/pydata/xarray/issues/1815
     #https://stackoverflow.com/questions/52094320/with-xarray-how-to-parallelize-1d-operations-on-a-multidimensional-dataset
 
     #This was just a test function to assess vectorised vs unvectorised version. This version takes approximately the same time as the looped version. 
     #Going to ignore this method.
+    Returns current units / year. 
     '''
     def new_linregress(x, y):
         # Wrapper around scipy linregress to use in apply_ufunc
@@ -111,7 +112,7 @@ def lin_wrapper(obj,startyear=1982):
         return np.array([slope*365, p_value])
 
     obj=obj.where(obj!=-0.9999,np.nan)
-    obj=obj.interpolate_na(dim='time').sel(time=slice(str(startyear)+'-01-01','2020-01-01'))
+    obj=obj.interpolate_na(dim='time').sel(time=slice(str(startyear)+'-01-01',str(endyear)+'-01-01'))
     obj['time']=pd.to_numeric(obj.time.values.astype('datetime64[D]'))
     
     stat = xr.apply_ufunc(new_linregress, obj['time'], obj,
@@ -300,6 +301,132 @@ def find_enso_events(threshold=0.5,data_path='../external_data/indexes/',out_pat
     print('saved to: '+out_path+'cp_events.csv')
     print('saved to: '+out_path+'ep_events.csv')
     
+
+
+    
+
+from datetime import datetime as dt
+def decimalYearGregorianDate(date, form="datetime"):
+    """
+    Function copied from: https://github.com/sczesla/PyAstronomy/blob/master/src/pyasl/asl/decimalYear.py
+    
+    Convert decimal year into gregorian date.
+    
+    Formally, the precision of the result is one microsecond.
+    
+    Parameters
+    ----------
+    date : float
+        The input date (and time).
+    form : str, optional
+        Output format for the date. Either one of the following strings
+        defining a format: "dd-mm-yyyy [hh:mm:ss]", "yyyy-mm-dd [hh:mm:ss]",
+        where the term in braces is optional, or 
+        "tuple" or "datetime". If 'tuple' is specified, the result will be a
+        tuple holding (year, month, day, hour, minute, second, microseconds).
+        In the case of "datetime" (default), the result will be a
+        datetime object.
+      
+    Returns
+    -------
+    Gregorian date : str, tuple, or datetime instance
+        The gregorian representation of the input in the specified format.
+        In case of an invalid format, None is returned.
+    """
+  
+    def s(date):
+        # returns seconds since epoch
+        return (date - dt(1900,1,1)).total_seconds()
+
+  # Shift the input of 1e-2 microseconds
+  # This step accounts for rounding issues.
+    date += 1e-5/(365.*86400.0)
+    
+    year = int(date)
+    yearFraction = float(date) - int(date)
+    startOfThisYear = dt(year=year, month=1, day=1)
+    startOfNextYear = dt(year=year+1, month=1, day=1)
+    secondsInYear = (s(startOfNextYear) - s(startOfThisYear)  ) * yearFraction
+    # Find the month
+    m = 1
+    while m<=12 and s(dt(year=year, month=m, day=1)) - s(startOfThisYear) <= secondsInYear: m+=1
+    m-=1
+    # Find the day
+    d = 1
+    tdt = dt(year=year, month=m, day=d)
+    while s(tdt) - s(startOfThisYear) <= secondsInYear:
+      d+=1
+      try: tdt=dt(year=year, month=m, day=d)
+      except: break
+    d-=1 
+    # Find the time
+    secondsRemaining = secondsInYear + s(startOfThisYear) - s(dt(year=year, month=m, day=d))
+    hh = int(secondsRemaining/3600.)
+    mm = int((secondsRemaining - hh*3600) / 60.)
+    ss = int(secondsRemaining - hh*3600 - mm * 60) 
+    ff = secondsRemaining - hh*3600 - mm * 60 - ss
+    
+    # Output formating
+    if "tuple" == form:
+      r = (year, m, d, hh, mm, ss, int(ff*1000))
+    elif "datetime" == form:
+      r = dt(year, m, d, hh, mm, ss, int(ff*1000))
+    elif "dd-mm-yyyy" in form:
+      r = str("%02i-%02i-%04i" % (d,m,year))
+      if "hh:mm:ss" in form:
+        r+=str(" %02i:%02i:%02i" % (hh,mm,ss))
+    elif "yyyy-mm-dd" in form:
+      r = str("%04i-%02i-%02i" % (year,m,d))
+      if "hh:mm:ss" in form:
+        r+=str(" %02i:%02i:%02i" % (hh,mm,ss))
+    else:
+      raise(ValueError("Invalid input form of `form` parameter.", \
+                           where="gregorianDate"))
+      return None
+    return r      
+    
+    
+
+def convert_CAFEatm_CO2times(atm_co2):
+    '''
+    Basically just wraps the above function into the format we want.
+    '''
+    dates=(atm_co2.time+1700)
+    new_dates=[]
+    for t in dates:
+        new_t=np.datetime64(decimalYearGregorianDate(t)).astype('datetime64[M]')#.astype('datetime64[M]')
+        new_dates.append(new_t)
+
+    atm_co2['time']=new_dates
+    return atm_co2
+
+
+def solubility(tk,s):
+    '''
+    Calculate CO2 solubility depending on temperature (Kelvin) and salinity
+    Uses coefficients provided in Wanninkhof et al., (2014) and Weiss (1974)
+    Parameters
+    ----------
+    tk : Int or Float
+        Temperature in Kelvin (Degrees C +273.15)
+    s : Int or Float
+        Salinity in Practical Salinity Units (g/kg)        
+    Returns
+    -------
+    ko : float
+        Ko is the solubility of CO2 in seawater, given temperature and salinity.
+    '''
+    A1=-58.0931
+    A2=90.5069
+    A3=22.2940
+    B1=0.027766
+    B2=-0.025888
+    B3=0.0050578
+
+    ko=np.exp(A1+ A2 *(100/tk) + A3 *np.log(tk/100) + s*(B1 + B2 *(tk/100) + B3 *(tk/100)**2))
+
+    return ko
+
 
 
 
