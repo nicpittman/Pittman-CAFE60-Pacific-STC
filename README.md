@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/362647744.svg)](https://zenodo.org/badge/latestdoi/362647744)
+
 ## Chapter 5: The Subtropical Cell: A key mechanism of Canth accumulation and uptake in the equatorial Pacific
 #### Python notebooks for Reproducing Pittman et al., 2022/23 
 
